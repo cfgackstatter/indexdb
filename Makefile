@@ -20,8 +20,8 @@ help:
 	@echo "    make clean-pyc        Remove Python bytecode and __pycache__"
 	@echo ""
 	@echo "  Deploy"
-	@echo "    make secrets          Push secrets from backend/.env to EB"
-	@echo "    make deploy           Commit, push secrets, and deploy to EB"
+	@echo "    make secrets          Push secrets to EB (run once or on key rotation)"
+	@echo "    make deploy           Commit, push, and deploy to EB"
 	@echo "    make logs             Tail EB logs"
 	@echo "    make ssh              SSH into the EB instance"
 	@echo ""
@@ -60,6 +60,7 @@ build: clean-frontend
 secrets:
 	$(eval PERPLEXITY_API_KEY := $(shell grep '^PERPLEXITY_API_KEY' backend/.env | cut -d '=' -f2))
 	@eb setenv PERPLEXITY_API_KEY=$(PERPLEXITY_API_KEY)
+	@echo "Secrets pushed. Run 'make deploy' to deploy."
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
 .PHONY: deploy logs ssh
@@ -74,7 +75,6 @@ deploy: clean
 		echo "No changes to commit, pushing existing commits..."; \
 		git push || echo "Already up to date"; \
 	fi
-	@$(MAKE) --no-print-directory secrets
 	eb deploy
 	@echo "Deployment complete! Run 'make logs' to view logs."
 

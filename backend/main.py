@@ -21,6 +21,11 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+
 @app.get("/search")
 def search(q: str = Query(..., min_length=1)) -> list[dict]:
     return search_indices(q)
