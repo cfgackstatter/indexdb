@@ -64,7 +64,7 @@ secrets:
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
 .PHONY: deploy logs ssh
-deploy: clean
+deploy: build
 	@echo "Deploying to Elastic Beanstalk..."
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		git add -A; \

@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 from datetime import date
 import polars as pl
 
@@ -21,9 +24,12 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def root():
-    return {"status": "ok"}
+if os.path.exists("frontend/dist"):
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+    @app.get("/", response_class=FileResponse)
+    def root():
+        return "frontend/dist/index.html"
 
 
 @app.get("/search")
