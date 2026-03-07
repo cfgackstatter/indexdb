@@ -4,22 +4,21 @@ from pathlib import Path
 from datetime import date
 
 # ── Storage config ────────────────────────────────────────────────────────────
-_BACKEND  = os.getenv("STORAGE_BACKEND", "local")
-_S3_ROOT  = f"s3://{os.getenv('S3_BUCKET', '')}"
 _DATA_DIR = Path(__file__).parent.parent / "data"
-
 CATALOG_REL = "catalog.parquet"
 
 def _is_s3() -> bool:
-    return _BACKEND == "s3"
+    return os.getenv("STORAGE_BACKEND", "local") == "s3"
+
+def _s3_root() -> str:
+    return f"s3://{os.getenv('S3_BUCKET', '')}"
 
 def _path(relative: str) -> str | Path:
-    """Resolve a relative path to either a local Path or an s3:// URI."""
-    return f"{_S3_ROOT}/{relative}" if _is_s3() else _DATA_DIR / relative
+    return f"{_s3_root()}/{relative}" if _is_s3() else _DATA_DIR / relative
 
 def _s3_exists(relative: str) -> bool:
     import s3fs
-    return s3fs.S3FileSystem().exists(f"{_S3_ROOT.removeprefix('s3://')}/{relative}")
+    return s3fs.S3FileSystem().exists(f"{os.getenv('S3_BUCKET', '')}/{relative}")
 
 # ── Low-level read / write ────────────────────────────────────────────────────
 def read_parquet(relative: str) -> pl.DataFrame:
@@ -46,8 +45,8 @@ def list_files(prefix: str) -> list[str]:
     if _is_s3():
         import s3fs
         fs      = s3fs.S3FileSystem()
-        root    = f"{_S3_ROOT.removeprefix('s3://')}/{prefix}"
-        bucket_prefix = f"{_S3_ROOT.removeprefix('s3://')}/"
+        root    = f"{os.getenv('S3_BUCKET', '')}/{prefix}"
+        bucket_prefix = f"{os.getenv('S3_BUCKET', '')}/"
         matches: list[str] = fs.glob(f"{root}/**/*.parquet")  # type: ignore[assignment]
         return [f.replace(bucket_prefix, "") for f in matches]
     base = _DATA_DIR / prefix
@@ -125,7 +124,7 @@ def delete_index(provider: str, symbol: str) -> None:
     if _is_s3():
         import s3fs
         fs = s3fs.S3FileSystem()
-        full = f"{_S3_ROOT.removeprefix('s3://')}/{rel}"
+        full = f"{os.getenv('S3_BUCKET', '')}/{rel}"
         if fs.exists(full):
             fs.rm(full)
     else:
