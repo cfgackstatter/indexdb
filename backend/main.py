@@ -23,25 +23,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-if os.path.exists("frontend/dist"):
-    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
-
-    @app.get("/")
-    def root():
-        return FileResponse("frontend/dist/index.html")
-
-    @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str):
-        # API routes are handled above this — only unmatched paths reach here
-        return FileResponse("frontend/dist/index.html")
-
-
+# ── Search ────────────────────────────────────────────────────────────────────
 @app.get("/search")
 def search(q: str = Query(..., min_length=1)) -> list[dict]:
     return search_indices(q)
 
-
+# ── Prices ────────────────────────────────────────────────────────────────────
 @app.get("/prices/{provider}/{symbol}")
 def prices(
     provider: str, symbol: str,
@@ -53,17 +40,15 @@ def prices(
         raise HTTPException(404, "No data found")
     return df.to_dicts()
 
-
+# ── Admin ─────────────────────────────────────────────────────────────────────
 @app.get("/admin/indices")
 def admin_list_indices() -> list[dict]:
     return list_indices().to_dicts()
-
 
 @app.get("/admin/providers")
 def admin_list_providers() -> list[str]:
     from backend.providers import REGISTRY
     return sorted(REGISTRY.keys())
-
 
 @app.post("/admin/ingest/{provider}/{symbol}", status_code=201)
 def admin_ingest(
@@ -75,16 +60,18 @@ def admin_ingest(
         n = ingest(provider, symbol, start=start, end=end)
     except ModuleNotFoundError:
         raise HTTPException(400, f"Unknown provider: {provider}")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
     if n == 0:
         raise HTTPException(404, "No data returned from provider")
     return {"provider": provider, "symbol": symbol, "rows": n}
-
 
 @app.post("/admin/indices/{provider}/{symbol}/refresh")
 def admin_refresh(provider: str, symbol: str) -> dict:
     from datetime import timedelta
     start = last_date(provider, symbol)
-    # start from day after last stored date to avoid duplicates
     if start:
         start = start + timedelta(days=1)
     n = ingest(provider, symbol, start=start, fetch_meta=False)
@@ -92,12 +79,10 @@ def admin_refresh(provider: str, symbol: str) -> dict:
         return {"provider": provider, "symbol": symbol, "rows": 0, "msg": "Already up to date"}
     return {"provider": provider, "symbol": symbol, "rows": n}
 
-
 @app.delete("/admin/indices/{provider}/{symbol}")
 def admin_delete(provider: str, symbol: str) -> dict:
     delete_index(provider, symbol)
     return {"ok": True}
-
 
 @app.patch("/admin/indices/{provider}/{symbol}/meta")
 def admin_update_meta(
@@ -109,11 +94,9 @@ def admin_update_meta(
     upsert_metadata(provider, symbol, **kwargs)
     return {"ok": True}
 
-
 @app.post("/admin/indices/{provider}/{symbol}/tag")
 def admin_tag_index(
-    provider: str,
-    symbol: str,
+    provider: str, symbol: str,
     backend: str = DEFAULT_TAGGER_BACKEND,
     context: str | None = None,
 ) -> dict:
@@ -131,6 +114,13 @@ def admin_tag_index(
         tags = generate_tags(meta, backend=backend, context=context)
     except Exception as e:
         raise HTTPException(500, str(e))
-    tag_str = ", ".join(tags)
-    upsert_metadata(provider, symbol, tags=tag_str)
+    upsert_metadata(provider, symbol, tags=", ".join(tags))
     return {"provider": provider, "symbol": symbol, "tags": tags}
+
+# ── SPA static files — must be last ──────────────────────────────────────────
+if os.path.exists("frontend/dist"):
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        return FileResponse("frontend/dist/index.html")
