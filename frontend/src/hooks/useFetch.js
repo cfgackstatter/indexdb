@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { API } from "../api";
 
 export function useFetch(path, deps = []) {
   const [data, setData] = useState(null);
@@ -10,7 +9,7 @@ export function useFetch(path, deps = []) {
     if (!path) return;
     setLoading(true);
     setError(false);
-    fetch(`${API}${path}`)
+    fetch(`${path}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => { setError(true); setLoading(false); });

@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { API } from "./api";
 import Chart from "./Chart";
 
 const COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#f43f5e", "#14b8a6"];
@@ -52,7 +51,7 @@ export default function MainPage() {
   useEffect(() => {
     if (!debouncedQuery) { setResults([]); return; }
     setSearchError(false);
-    fetch(`${API}/search?q=${encodeURIComponent(debouncedQuery)}`)
+    fetch(`/search?q=${encodeURIComponent(debouncedQuery)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setResults)
       .catch(() => { setSearchError(true); setResults([]); });
@@ -69,7 +68,7 @@ export default function MainPage() {
   useEffect(() => {
     selected.forEach(idx => {
       if (idx.name) return;
-      fetch(`${API}/search?q=${encodeURIComponent(idx.symbol)}`)
+      fetch(`/search?q=${encodeURIComponent(idx.symbol)}`)
         .then(r => r.ok ? r.json() : [])
         .then(results => {
           const match = results.find(

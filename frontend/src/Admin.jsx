@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { API } from "./api";
 import { useFetch } from "./hooks/useFetch";
 
 const PAGE_SIZE = 50;
@@ -23,7 +22,7 @@ export default function Admin() {
   }, [providers]);
 
   const loadIndices = () =>
-    fetch(`${API}/admin/indices`)
+    fetch(`/admin/indices`)
       .then(r => r.ok ? r.json() : [])
       .then(setIndices)
       .catch(() => {});
@@ -59,7 +58,7 @@ export default function Admin() {
     setMessage("");
     try {
       const res = await fetch(
-        `${API}/admin/ingest/${encodeURIComponent(providerInput)}/${encodeURIComponent(symbolInput)}`,
+        `/admin/ingest/${encodeURIComponent(providerInput)}/${encodeURIComponent(symbolInput)}`,
         { method: "POST" }
       );
       const data = await res.json();
@@ -78,7 +77,7 @@ export default function Admin() {
   const onDelete = async (provider, symbol) => {
     if (!window.confirm(`Delete ${provider}/${symbol}?`)) return;
     await fetch(
-      `${API}/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}`,
+      `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}`,
       { method: "DELETE" }
     );
     setIndices(prev => prev.filter(
@@ -90,7 +89,7 @@ export default function Admin() {
     setMessage("");
     try {
       const res = await fetch(
-        `${API}/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/refresh`,
+        `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/refresh`,
         { method: "POST" }
       );
       const data = await res.json();
@@ -109,7 +108,7 @@ export default function Admin() {
     setMessage("");
     try {
       const res = await fetch(
-        `${API}/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/tag`,
+        `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/tag`,
         { method: "POST" }
       );
       const data = await res.json();

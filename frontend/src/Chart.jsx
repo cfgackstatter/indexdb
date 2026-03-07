@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { API } from "./api";
 
 const COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#f43f5e", "#14b8a6"];
 
@@ -89,7 +88,7 @@ export default function Chart({ indices, colorMap, range, onRangeChange }) {
       anyLoading = true;
       setLoading(true);
       try {
-        const res = await fetch(`${API}/prices/${provider}/${symbol}${startParam}`);
+        const res = await fetch(`/prices/${provider}/${symbol}${startParam}`);
         if (!res.ok) return;
         const data = await res.json();
         setCache(prev => ({ ...prev, [cacheKey]: data }));
