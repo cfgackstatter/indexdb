@@ -27,9 +27,14 @@ app.add_middleware(
 if os.path.exists("frontend/dist"):
     app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
-    @app.get("/", response_class=FileResponse)
+    @app.get("/")
     def root():
-        return "frontend/dist/index.html"
+        return FileResponse("frontend/dist/index.html")
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        # API routes are handled above this — only unmatched paths reach here
+        return FileResponse("frontend/dist/index.html")
 
 
 @app.get("/search")
