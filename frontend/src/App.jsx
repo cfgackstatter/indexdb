@@ -32,7 +32,7 @@ export default function App() {
         <div>
           <div className="app-title">IndexDB</div>
           <div className="app-subtitle">
-            Index Analytics
+            Index Management & Analytics
           </div>
         </div>
         <NavTabs />
