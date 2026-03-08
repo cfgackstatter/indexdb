@@ -16,8 +16,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/admin': 'http://localhost:8000',
+      '^(?!/src|/node_modules|/@).*': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      }
     }
   }
 });
