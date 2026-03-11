@@ -23,7 +23,8 @@ function subtractMonths(n) {
 
 function fmtDate(str) {
   if (!str) return "";
-  return new Date(str).toLocaleDateString("en-GB", {
+  const [y, m, d] = str.split("-");
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
     day: "2-digit", month: "short", year: "numeric",
   });
 }
@@ -155,9 +156,12 @@ export default function Chart({ indices, colorMap, range, onRangeChange }) {
             <XAxis
               dataKey="date"
               tick={{ fontSize: 11, fill: "#6b7280" }}
-              tickFormatter={v => new Date(v).toLocaleDateString("en-GB", {
-                day: "2-digit", month: "short", year: "2-digit",
-              })}
+              tickFormatter={v => {
+                const [y, m, d] = v.split("-");
+                return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+                  day: "2-digit", month: "short", year: "2-digit",
+                });
+              }}
               tickLine={false}
               axisLine={{ stroke: "#1f2937" }}
               interval={Math.floor(chartData.length / 6)}
