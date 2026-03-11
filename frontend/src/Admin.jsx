@@ -54,21 +54,29 @@ export default function Admin() {
 
   const onDownload = async () => {
     if (!providerInput || !symbolInput) return;
+    const symbols = symbolInput.split(",").map(s => s.trim()).filter(Boolean);
     setLoading(true);
     setMessage("");
+    const results = [];
     try {
-      const res = await fetch(
-        `/admin/ingest/${encodeURIComponent(providerInput)}/${encodeURIComponent(symbolInput)}`,
-        { method: "POST" }
-      );
-      const data = await res.json();
-      setMessage(res.ok
-        ? `✓ Ingested ${data.rows} rows for ${data.provider}/${data.symbol}`
-        : `✗ ${data.detail ?? "Ingest failed"}`
-      );
-      if (res.ok) { setSymbolInput(""); await loadIndices(); }
-    } catch {
-      setMessage("✗ Could not connect to backend");
+      for (const sym of symbols) {
+        try {
+          const res = await fetch(
+            `/admin/ingest/${encodeURIComponent(providerInput)}/${encodeURIComponent(sym)}`,
+            { method: "POST" }
+          );
+          const data = await res.json();
+          results.push(res.ok
+            ? `✓ ${sym}: ${data.rows} rows`
+            : `✗ ${sym}: ${data.detail ?? "failed"}`
+          );
+        } catch {
+          results.push(`✗ ${sym}: connection error`);
+        }
+      }
+      setMessage(results.join(" · "));
+      setSymbolInput("");
+      await loadIndices();
     } finally {
       setLoading(false);
     }
@@ -145,7 +153,7 @@ export default function Admin() {
             value={symbolInput}
             onChange={e => setSymbolInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && onDownload()}
-            placeholder="symbol (e.g. ^GSPC, SPY)"
+            placeholder="symbols (e.g. ^GSPC, ^NDX)"
           />
           <button
             className="pill-button pill-button-active"
