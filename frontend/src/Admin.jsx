@@ -147,14 +147,17 @@ export default function Admin() {
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
-          <input
-            className="search-input"
-            style={{ maxWidth: 220 }}
-            value={symbolInput}
-            onChange={e => setSymbolInput(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && onDownload()}
-            placeholder="symbols (e.g. ^GSPC, ^NDX)"
-          />
+          <div className="search-input-wrapper">
+            <span className="search-icon">⌕</span>
+            <input
+              className="search-input"
+              style={{ maxWidth: 220 }}
+              value={symbolInput}
+              onChange={e => setSymbolInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && onDownload()}
+              placeholder="symbols (e.g. ^GSPC, ^NDX)"
+            />
+          </div>
           <button
             className="pill-button pill-button-active"
             disabled={loading || !symbolInput}
