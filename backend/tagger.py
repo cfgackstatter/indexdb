@@ -1,21 +1,21 @@
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).parent / ".env")
-
 import json
 import os
 import re
-import requests
-
+import httpx
+from functools import lru_cache
 from backend.store import _read_catalog
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 
 # ── LLM backend abstraction ───────────────────────────────
 
 def _call_llm(prompt: str, model: str, api_key: str, base_url: str) -> str:
     """Generic OpenAI-compatible chat completion call."""
-    resp = requests.post(
+    resp = httpx.post(
         f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},
@@ -47,11 +47,12 @@ def _get_backend(name: str) -> dict:
 
 # ── Tag frequency seed ────────────────────────────────────
 
-def _existing_tags(top_n: int = 40) -> list[str]:
+@lru_cache(maxsize=1)
+def _existing_tags(top_n: int = 40) -> tuple[str, ...]:
     """Return most frequent existing tags from catalog as seed context."""
     df = _read_catalog()
     if df.is_empty() or "tags" not in df.columns:
-        return []
+        return tuple()
     from collections import Counter
     counts = Counter(
         tag.strip()
@@ -59,7 +60,7 @@ def _existing_tags(top_n: int = 40) -> list[str]:
         for tag in row.split(",")
         if tag.strip()
     )
-    return [tag for tag, _ in counts.most_common(top_n)]
+    return tuple(tag for tag, _ in counts.most_common(top_n))
 
 
 # ── Prompt ────────────────────────────────────────────────
@@ -69,35 +70,36 @@ def _build_prompt(meta: dict, context: str | None) -> str:
              if k not in ("provider", "symbol", "tags") and v}
     seed_tags = _existing_tags()
 
-    prompt = f"""You are tagging a financial index for a professional investment database.
+    prompt = f"""Tag a financial index for a professional investment database.
+Only tag what is a PRIMARY, DELIBERATE exposure — not incidental holdings.
+E.g. for a broad market index do NOT list individual sectors it contains implicitly.
 
 Index: {meta.get('symbol', '')} ({meta.get('provider', '')})
-Known metadata: {json.dumps(known, indent=2)}
+Metadata (do not repeat as tags): {json.dumps(known, separators=(',', ':'))}
 """
     if context:
-        prompt += f"\nAdditional context:\n{context}\n"
+        prompt += f"Context: {context}\n"
 
     if seed_tags:
-        prompt += f"\nExisting tags in the database (reuse where accurate):\n{', '.join(seed_tags)}\n"
+        prompt += f"Reuse existing tags where accurate (add new tags freely when needed.): {', '.join(seed_tags)}\n"
 
     prompt += """
-Generate 6–10 tags describing what this index offers an investor.
+Generate 4–15 tags covering only deliberate exposures, for example:
 
 Focus on:
-- Asset class (e.g. Equity, Fixed Income, Commodity)
-- Geography / region (e.g. Germany, Eurozone, Emerging Markets)
-- Market cap (e.g. Large Cap, Small Cap, Mid Cap)
-- Style / factor (e.g. Value, Growth, Momentum, Low Volatility, Quality)
-- Sector / industry (e.g. Technology, Financials, Energy)
-- Return type (e.g. Total Return, Price Return, Net Return)
-- Risk profile modifiers (e.g. Leveraged, Short, Long/Short, Currency Hedged)
+- Asset class (Equity, Fixed Income, Commodity, Multi-Asset)
+- Geography (e.g. Germany, Eurozone, Emerging Markets)
+- Market cap (Large Cap, Mid Cap, Small Cap)
+- Style/factor (Market, Value, Growth, Momentum, Quality, Low Volatility)
+- Sector/industry/theme ONLY if the index specifically targets it (e.g. Technology, Clean Energy, Financials, Robotics, Digital Payments, Cloud Computing, Space)
+- Granular theme only if narrow-focused (Semiconductor, Cybersecurity, Solar)
+- Risk modifiers (Leveraged, Short, Currency Hedged, Risk Controlled)
+Multiple tags from the same category are allowed (e.g. "europe, eurozone").
 
 Avoid: index construction rules, rebalancing frequency, listing requirements,
 selection criteria details, corporate governance rules.
 
-Reuse existing tags where accurate. Add new tags freely when needed.
-Each tag: 1–4 words, title case.
-Return ONLY a JSON array of strings, no explanation.
+Return ONLY a JSON array of strings, 1–4 words each, lowercase, no explanation.
 """
     return prompt
 
@@ -113,7 +115,7 @@ def generate_tags(
     Generate tags for an index given its metadata dict.
     meta: catalog row dict (provider, symbol, name, currency, etc.)
     context: optional free-text context (index guide excerpt, URL, description)
-    backend: "perplexity" | "ollama"
+    backend: "perplexity"
     Returns a list of tag strings.
     """
     cfg = _get_backend(backend)
@@ -121,7 +123,10 @@ def generate_tags(
     raw = _call_llm(prompt, cfg["model"], cfg["api_key"], cfg["base_url"])
 
     # extract JSON array robustly — handles markdown code fences
-    match = re.search(r"\[.*?\]", raw, re.DOTALL)
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not match:
         raise ValueError(f"LLM did not return a JSON array. Raw: {raw[:200]}")
-    return json.loads(match.group())
+    tags = json.loads(match.group())
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        raise ValueError(f"Unexpected LLM response shape: {tags}")
+    return [t.strip().lower() for t in tags]
