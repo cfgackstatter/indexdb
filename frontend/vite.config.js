@@ -16,10 +16,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '^(?!/src|/node_modules|/@).*': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      }
+      '/admin': 'http://localhost:8000',
+      '/search': 'http://localhost:8000',
+      '/prices': 'http://localhost:8000',
     }
   }
 });
