@@ -29,6 +29,110 @@ function fmtDate(str) {
   });
 }
 
+function computeMetrics(rows) {
+  if (!rows || rows.length < 2) return null;
+
+  // daily returns
+  const returns = [];
+  for (let i = 1; i < rows.length; i++) {
+    returns.push((rows[i].close - rows[i - 1].close) / rows[i - 1].close);
+  }
+
+  const n = returns.length;
+  const years = n / 252;
+
+  // total return
+  const totalReturn = (rows[rows.length - 1].close - rows[0].close) / rows[0].close;
+
+  // CAGR
+  const cagr = Math.pow(1 + totalReturn, 1 / years) - 1;
+
+  // annualised volatility
+  const mean = returns.reduce((s, r) => s + r, 0) / n;
+  const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / n;
+  const vol = Math.sqrt(variance * 252);
+
+  // max drawdown
+  let peak = rows[0].close, maxDD = 0;
+  for (const row of rows) {
+    if (row.close > peak) peak = row.close;
+    const dd = (peak - row.close) / peak;
+    if (dd > maxDD) maxDD = dd;
+  }
+
+  // Sharpe (risk-free = 0)
+  const sharpe = vol > 0 ? cagr / vol : null;
+
+  // Calmar
+  const calmar = maxDD > 0 ? cagr / maxDD : null;
+
+  return { totalReturn, cagr, vol, maxDD, sharpe, calmar };
+}
+
+const FMT_PCT = v => v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+const FMT_2   = v => v == null ? "—" : v.toFixed(2);
+
+const METRIC_DEFS = [
+  { key: "totalReturn", label: "Total Return",  fmt: FMT_PCT, tip: "Cumulative return over the selected range" },
+  { key: "cagr",        label: "Ann. Return",   fmt: FMT_PCT, tip: "Compound annual growth rate" },
+  { key: "vol",         label: "Ann. Vol",      fmt: FMT_PCT, tip: "Annualised standard deviation of daily returns" },
+  { key: "maxDD",       label: "Max Drawdown",  fmt: v => v == null ? "—" : `-${(v * 100).toFixed(1)}%`, tip: "Largest peak-to-trough decline" },
+  { key: "sharpe",      label: "Sharpe",        fmt: FMT_2,   tip: "Ann. return / ann. volatility (risk-free = 0)" },
+  { key: "calmar",      label: "Calmar",        fmt: FMT_2,   tip: "Ann. return / max drawdown" },
+];
+
+function MetricsTable({ seriesMap, indices, colorMap }) {
+  const entries = indices
+    .map(({ provider, symbol, name }) => {
+      const key = `${provider}/${symbol}`;
+      const rows = seriesMap[key];
+      return { key, label: name ? `${symbol} · ${name}` : symbol, color: colorMap?.[key], metrics: computeMetrics(rows) };
+    })
+    .filter(e => e.metrics);
+
+  if (!entries.length) return null;
+
+  return (
+    <div style={{ marginTop: 20, overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 500 }}>Index</th>
+            {METRIC_DEFS.map(m => (
+              <th key={m.key} title={m.tip}
+                style={{ textAlign: "right", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 500, cursor: "help" }}>
+                {m.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(({ key, label, color, metrics }) => (
+            <tr key={key} style={{ borderTop: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 8px", color, fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+                {label}
+              </td>
+              {METRIC_DEFS.map(m => {
+                const v = metrics[m.key];
+                const isNeg = typeof v === "number" && v < 0;
+                return (
+                  <td key={m.key} style={{
+                    textAlign: "right", padding: "6px 8px",
+                    fontFamily: "var(--font-mono)",
+                    color: isNeg ? "#f43f5e" : "var(--text)",
+                  }}>
+                    {m.fmt(v)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function CustomTooltip({ active, payload, label, labelMap = {} }) {
   if (!active || !payload?.length) return null;
 
@@ -151,47 +255,51 @@ export default function Chart({ indices, colorMap, range, onRangeChange }) {
           Search and select indices above to display a chart
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={chartData}>
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 11, fill: "#6b7280" }}
-              tickFormatter={v => {
-                const [y, m, d] = v.split("-");
-                return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
-                  day: "2-digit", month: "short", year: "2-digit",
-                });
-              }}
-              tickLine={false}
-              axisLine={{ stroke: "#1f2937" }}
-              interval={Math.floor(chartData.length / 6)}
-            />
-            <YAxis
-              tickFormatter={v => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
-              tick={{ fontSize: 11, fill: "#6b7280" }}
-              tickLine={false}
-              axisLine={false}
-              width={54}
-            />
-            <ReferenceLine
-              y={0}
-              stroke="#1f2937"
-              strokeDasharray="4 4"
-              strokeWidth={1}
-            />
-            <Tooltip content={<CustomTooltip labelMap={labelMap} />} />
-            {Object.keys(seriesMap).map((key, i) => (
-              <Line
-                key={key}
-                dataKey={key}
-                dot={false}
-                strokeWidth={1.5}
-                stroke={colorMap?.[key] ?? COLORS[i % COLORS.length]}
-                connectNulls
+        <>
+          <ResponsiveContainer width="100%" height={340}>
+            <LineChart data={chartData}>
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                tickFormatter={v => {
+                  const [y, m, d] = v.split("-");
+                  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+                    day: "2-digit", month: "short", year: "2-digit",
+                  });
+                }}
+                tickLine={false}
+                axisLine={{ stroke: "#1f2937" }}
+                interval={Math.floor(chartData.length / 6)}
               />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
+              <YAxis
+                tickFormatter={v => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                tickLine={false}
+                axisLine={false}
+                width={54}
+              />
+              <ReferenceLine
+                y={0}
+                stroke="#1f2937"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
+              <Tooltip content={<CustomTooltip labelMap={labelMap} />} />
+              {Object.keys(seriesMap).map((key, i) => (
+                <Line
+                  key={key}
+                  dataKey={key}
+                  dot={false}
+                  strokeWidth={1.5}
+                  stroke={colorMap?.[key] ?? COLORS[i % COLORS.length]}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+
+          <MetricsTable seriesMap={seriesMap} indices={indices} colorMap={colorMap} />
+        </>
       )}
     </div>
   );
