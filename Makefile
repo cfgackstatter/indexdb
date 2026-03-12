@@ -67,8 +67,10 @@ secrets:
 deploy: build
 	@echo "Deploying to Elastic Beanstalk..."
 	@if [ -n "$$(git status --porcelain)" ]; then \
-		git add -A; \
+		echo "Current changes:"; \
+	  	git status --short; \
 		read -p "Commit message: " msg; \
+		git add -A; \
 		git commit -m "$$msg"; \
 		git push; \
 	else \
