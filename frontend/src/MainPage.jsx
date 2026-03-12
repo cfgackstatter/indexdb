@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Chart from "./Chart";
 
@@ -33,11 +33,15 @@ export default function MainPage() {
   const [results, setResults] = useState([]);
   const [searchError, setSearchError] = useState(false);
 
+  const dropdownRef = useRef(null);
+
   // initialise from URL
   const [selected, setSelected] = useState(() => decodeIndices(searchParams.get("indices")));
   const [range, setRange] = useState(() => searchParams.get("range") ?? "1Y");
 
   const debouncedQuery = useDebounce(query, 200);
+
+  const closeResults = useCallback(() => { setResults([]); setQuery(""); }, []);
 
   // sync state → URL
   useEffect(() => {
@@ -62,7 +66,21 @@ export default function MainPage() {
     const onKey = e => { if (e.key === "Escape") closeResults(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [closeResults]);
+
+  // Click outside closes dropdown
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target)) {
+        if (results.length > 0) {
+          closeResults();
+        }
+      }
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [results.length, closeResults]);
 
   // when URL-decoded indices have no metadata yet, enrich from search
   useEffect(() => {
@@ -99,8 +117,6 @@ export default function MainPage() {
       setSelected(prev => [...prev, idx]);
   };
 
-  const closeResults = () => { setResults([]); setQuery(""); };
-
   const remove = (idx) =>
     setSelected(prev => prev.filter(
       s => !(s.symbol === idx.symbol && s.provider === idx.provider)
@@ -109,7 +125,7 @@ export default function MainPage() {
   return (
     <>
       <section className="search-row">
-        <div className="search-input-wrapper">
+        <div className="search-input-wrapper" ref={dropdownRef}>
           <span className="search-icon">⌕</span>
           <input
             className="search-input"
