@@ -10,6 +10,7 @@ from backend.store import (
     read_prices, search_indices,
     list_indices, delete_index,
     upsert_metadata, last_date,
+    InvalidIndexPath,
 )
 from backend.ingest import ingest
 from backend.tagger import generate_tags
@@ -23,6 +24,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(InvalidIndexPath)
+async def invalid_index_path_handler(_request, exc: InvalidIndexPath):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 # ── Search ────────────────────────────────────────────────────────────────────
 @app.get("/search")

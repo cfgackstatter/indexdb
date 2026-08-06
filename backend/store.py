@@ -1,4 +1,5 @@
 import os
+import re
 import polars as pl
 from pathlib import Path
 from datetime import date
@@ -7,6 +8,26 @@ from datetime import date
 _DATA_DIR = Path(__file__).parent.parent / "data"
 CATALOG_REL = "catalog.parquet"
 
+# Providers: "yahoo", "stoxx-free". Symbols: "^GSPC", "^990100-USD-STRD", "SX5E".
+_PROVIDER_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+_SYMBOL_RE = re.compile(r"^[A-Z0-9^][A-Z0-9._=-]*$")
+
+
+class InvalidIndexPath(ValueError):
+    """Raised when provider/symbol would be unsafe as a storage path."""
+
+
+def _validate_id(provider: str, symbol: str) -> tuple[str, str]:
+    provider = provider.lower().strip()
+    symbol = symbol.upper().strip()
+    if not provider or not _PROVIDER_RE.fullmatch(provider):
+        raise InvalidIndexPath(f"Invalid provider: {provider!r}")
+    if not symbol or not _SYMBOL_RE.fullmatch(symbol):
+        raise InvalidIndexPath(f"Invalid symbol: {symbol!r}")
+    if ".." in provider or ".." in symbol:
+        raise InvalidIndexPath("Invalid provider or symbol")
+    return provider, symbol
+
 def _is_s3() -> bool:
     return os.getenv("STORAGE_BACKEND", "local") == "s3"
 
@@ -14,7 +35,15 @@ def _s3_root() -> str:
     return f"s3://{os.getenv('S3_BUCKET', '')}"
 
 def _path(relative: str) -> str | Path:
-    return f"{_s3_root()}/{relative}" if _is_s3() else _DATA_DIR / relative
+    if _is_s3():
+        # Reject key tricks even if a caller bypasses _validate_id.
+        if relative.startswith("/") or ".." in relative.split("/"):
+            raise InvalidIndexPath(f"Invalid storage path: {relative!r}")
+        return f"{_s3_root()}/{relative}"
+    p = (_DATA_DIR / relative).resolve()
+    if not p.is_relative_to(_DATA_DIR.resolve()):
+        raise InvalidIndexPath(f"Invalid storage path: {relative!r}")
+    return p
 
 def _s3_exists(relative: str) -> bool:
     import s3fs
@@ -60,9 +89,10 @@ def _write_catalog(df: pl.DataFrame) -> None:
     write_parquet(df, CATALOG_REL)
 
 def _norm(provider: str, symbol: str) -> tuple[str, str]:
-    return provider.lower().strip(), symbol.upper().strip()
+    return _validate_id(provider, symbol)
 
 def _price_rel(provider: str, symbol: str) -> str:
+    # provider/symbol already validated by _norm / _validate_id
     return f"{provider}/{symbol}.parquet"
 
 # ── Price data ────────────────────────────────────────────────────────────────
@@ -128,7 +158,7 @@ def delete_index(provider: str, symbol: str) -> None:
         if fs.exists(full):
             fs.rm(full)
     else:
-        p = _DATA_DIR / rel
+        p = Path(_path(rel))
         if p.exists():
             p.unlink()
     df = _read_catalog()
