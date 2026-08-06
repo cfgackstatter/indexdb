@@ -213,8 +213,13 @@ a.pill-button { text-decoration: none; display: inline-block; }
   transition: background-color var(--trans), color var(--trans);
 }
 .table-button:hover             { background: var(--bg-hover); color: var(--text-primary); }
+.table-button:disabled,
+.table-button:disabled:hover    { opacity: 0.4; cursor: not-allowed; background: rgba(15,23,42,0.9); color: var(--text-muted); }
 .table-button-danger            { border-color: rgba(248,113,113,0.6); color: var(--danger); }
 .table-button-danger:hover      { background: rgba(248,113,113,0.1); color: #fecaca; }
+.table-button-danger:disabled:hover { color: var(--text-muted); background: rgba(15,23,42,0.9); }
+.pill-button:disabled,
+.pill-button:disabled:hover     { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Select ─────────────────────────────────────────────── */
 select.search-input {

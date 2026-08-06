@@ -59,7 +59,8 @@ build: clean-frontend
 .PHONY: secrets
 secrets:
 	$(eval PERPLEXITY_API_KEY := $(shell grep '^PERPLEXITY_API_KEY' backend/.env | cut -d '=' -f2))
-	@eb setenv PERPLEXITY_API_KEY=$(PERPLEXITY_API_KEY)
+	$(eval ADMIN_PASSWORD := $(shell grep '^ADMIN_PASSWORD' backend/.env | cut -d '=' -f2))
+	@eb setenv PERPLEXITY_API_KEY=$(PERPLEXITY_API_KEY) ADMIN_PASSWORD=$(ADMIN_PASSWORD)
 	@echo "Secrets pushed. Run 'make deploy' to deploy."
 
 # ── Deploy ────────────────────────────────────────────────────────────────────

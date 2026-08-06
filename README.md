@@ -196,6 +196,7 @@ No database required.
 | Variable             | Location        | Description                                         |
 | -------------------- | --------------- | --------------------------------------------------- |
 | `PERPLEXITY_API_KEY` | `backend/.env`  | Perplexity API key for AI tagging                   |
+| `ADMIN_PASSWORD`     | `backend/.env`  | Shared password required for admin write actions    |
 | `VITE_API_URL`       | `frontend/.env` | Backend base URL (default: `http://localhost:8000`) |
 
 ---

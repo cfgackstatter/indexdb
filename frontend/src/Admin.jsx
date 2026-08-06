@@ -2,9 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useFetch } from "./hooks/useFetch";
 
 const PAGE_SIZE = 50;
+const PASSWORD_KEY = "indexdb_admin_password";
 
 // columns to never show in the table (still searchable)
 const HIDDEN_COLS = new Set(["currency"]);
+
+function adminHeaders(password) {
+  return password ? { "X-Admin-Password": password } : {};
+}
+
+async function parseDetail(res) {
+  try {
+    const data = await res.json();
+    return data.detail ?? data.msg ?? "failed";
+  } catch {
+    return res.statusText || "failed";
+  }
+}
 
 export default function Admin() {
   const [indices, setIndices] = useState([]);
@@ -14,12 +28,21 @@ export default function Admin() {
   const [symbolInput, setSymbolInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [password, setPassword] = useState(
+    () => sessionStorage.getItem(PASSWORD_KEY) ?? ""
+  );
 
+  const unlocked = password.length > 0;
   const { data: providers } = useFetch("/admin/providers", []);
 
   useEffect(() => {
     if (providers?.length) setProviderInput(p => p || providers[0]);
   }, [providers]);
+
+  useEffect(() => {
+    if (password) sessionStorage.setItem(PASSWORD_KEY, password);
+    else sessionStorage.removeItem(PASSWORD_KEY);
+  }, [password]);
 
   const loadIndices = () =>
     fetch(`/admin/indices`)
@@ -53,7 +76,7 @@ export default function Admin() {
   const hasMore = filtered.length > paginated.length;
 
   const onDownload = async () => {
-    if (!providerInput || !symbolInput) return;
+    if (!providerInput || !symbolInput || !unlocked) return;
     const symbols = symbolInput.split(",").map(s => s.trim()).filter(Boolean);
     setLoading(true);
     setMessage("");
@@ -63,13 +86,14 @@ export default function Admin() {
         try {
           const res = await fetch(
             `/admin/ingest/${encodeURIComponent(providerInput)}/${encodeURIComponent(sym)}`,
-            { method: "POST" }
+            { method: "POST", headers: adminHeaders(password) }
           );
-          const data = await res.json();
-          results.push(res.ok
-            ? `✓ ${sym}: ${data.rows} rows`
-            : `✗ ${sym}: ${data.detail ?? "failed"}`
-          );
+          if (res.ok) {
+            const data = await res.json();
+            results.push(`✓ ${sym}: ${data.rows} rows`);
+          } else {
+            results.push(`✗ ${sym}: ${await parseDetail(res)}`);
+          }
         } catch {
           results.push(`✗ ${sym}: connection error`);
         }
@@ -83,29 +107,38 @@ export default function Admin() {
   };
 
   const onDelete = async (provider, symbol) => {
+    if (!unlocked) return;
     if (!window.confirm(`Delete ${provider}/${symbol}?`)) return;
-    await fetch(
+    const res = await fetch(
       `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}`,
-      { method: "DELETE" }
+      { method: "DELETE", headers: adminHeaders(password) }
     );
+    if (!res.ok) {
+      setMessage(`✗ ${await parseDetail(res)}`);
+      return;
+    }
     setIndices(prev => prev.filter(
       i => !(i.provider === provider && i.symbol === symbol)
     ));
   };
 
   const onRefresh = async (provider, symbol) => {
+    if (!unlocked) return;
     setMessage("");
     try {
       const res = await fetch(
         `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/refresh`,
-        { method: "POST" }
+        { method: "POST", headers: adminHeaders(password) }
       );
+      if (!res.ok) {
+        setMessage(`✗ ${await parseDetail(res)}`);
+        return;
+      }
       const data = await res.json();
-      setMessage(res.ok
-        ? data.rows === 0
+      setMessage(
+        data.rows === 0
           ? `✓ ${data.provider}/${data.symbol} already up to date`
           : `✓ Refreshed ${data.rows} new rows for ${data.provider}/${data.symbol}`
-        : "✗ Refresh failed"
       );
     } catch {
       setMessage("✗ Could not connect to backend");
@@ -113,18 +146,20 @@ export default function Admin() {
   };
 
   const onTag = async (provider, symbol) => {
+    if (!unlocked) return;
     setMessage("");
     try {
       const res = await fetch(
         `/admin/indices/${encodeURIComponent(provider)}/${encodeURIComponent(symbol)}/tag`,
-        { method: "POST" }
+        { method: "POST", headers: adminHeaders(password) }
       );
+      if (!res.ok) {
+        setMessage(`✗ ${await parseDetail(res)}`);
+        return;
+      }
       const data = await res.json();
-      setMessage(res.ok
-        ? `✓ Tagged ${provider}/${symbol}: ${data.tags.join(", ")}`
-        : `✗ ${data.detail ?? "Tagging failed"}`
-      );
-      if (res.ok) await loadIndices();
+      setMessage(`✓ Tagged ${provider}/${symbol}: ${data.tags.join(", ")}`);
+      await loadIndices();
     } catch {
       setMessage("✗ Could not connect to backend");
     }
@@ -132,6 +167,35 @@ export default function Admin() {
 
   return (
     <>
+      <section className="panel">
+        <div className="panel-header">
+          <div className="panel-title">Admin access</div>
+          <div className="panel-badge">
+            {unlocked ? "Actions unlocked" : "View only — enter password to edit"}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            className="search-input"
+            style={{ maxWidth: 220, paddingLeft: 12 }}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Admin password"
+          />
+          {unlocked && (
+            <button
+              className="pill-button"
+              type="button"
+              onClick={() => setPassword("")}
+            >
+              Lock
+            </button>
+          )}
+        </div>
+      </section>
+
       <section className="panel">
         <div className="panel-header">
           <div className="panel-title">Download new index</div>
@@ -142,6 +206,7 @@ export default function Admin() {
             style={{ maxWidth: 140, paddingLeft: 10 }}
             value={providerInput}
             onChange={e => setProviderInput(e.target.value)}
+            disabled={!unlocked}
           >
             {(providers ?? ["yahoo"]).map(p => (
               <option key={p} value={p}>{p}</option>
@@ -156,12 +221,14 @@ export default function Admin() {
               onChange={e => setSymbolInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && onDownload()}
               placeholder="symbols (e.g. ^GSPC, ^NDX)"
+              disabled={!unlocked}
             />
           </div>
           <button
             className="pill-button pill-button-active"
-            disabled={loading || !symbolInput}
+            disabled={loading || !symbolInput || !unlocked}
             onClick={onDownload}
+            title={unlocked ? undefined : "Enter admin password to enable"}
           >
             {loading ? "Downloading…" : "Download"}
           </button>
@@ -184,7 +251,7 @@ export default function Admin() {
 
         <input
           className="search-input"
-          style={{ maxWidth: 300, marginBottom: 8 }}
+          style={{ maxWidth: 300, marginBottom: 8, paddingLeft: 12 }}
           value={filter}
           onChange={e => setFilter(e.target.value)}
           placeholder="Filter across all columns…"
@@ -209,14 +276,20 @@ export default function Admin() {
                   ))}
                   <td>
                     <button className="table-button"
+                      disabled={!unlocked}
+                      title={unlocked ? undefined : "Enter admin password to enable"}
                       onClick={() => onRefresh(idx.provider, idx.symbol)}>
                       Update
                     </button>
                     <button className="table-button"
+                      disabled={!unlocked}
+                      title={unlocked ? undefined : "Enter admin password to enable"}
                       onClick={() => onTag(idx.provider, idx.symbol)}>
                       Tag
                     </button>
                     <button className="table-button table-button-danger"
+                      disabled={!unlocked}
+                      title={unlocked ? undefined : "Enter admin password to enable"}
                       onClick={() => onDelete(idx.provider, idx.symbol)}>
                       Delete
                     </button>

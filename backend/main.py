@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import Depends, FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -14,6 +14,7 @@ from backend.store import (
 from backend.ingest import ingest
 from backend.tagger import generate_tags
 from backend.config import DEFAULT_TAGGER_BACKEND
+from backend.auth import require_admin
 
 app = FastAPI()
 app.add_middleware(
@@ -50,7 +51,7 @@ def admin_list_providers() -> list[str]:
     from backend.providers import REGISTRY
     return sorted(REGISTRY.keys())
 
-@app.post("/admin/ingest/{provider}/{symbol}", status_code=201)
+@app.post("/admin/ingest/{provider}/{symbol}", status_code=201, dependencies=[Depends(require_admin)])
 def admin_ingest(
     provider: str, symbol: str,
     start: date | None = None,
@@ -68,7 +69,7 @@ def admin_ingest(
         raise HTTPException(404, "No data returned from provider")
     return {"provider": provider, "symbol": symbol, "rows": n}
 
-@app.post("/admin/indices/{provider}/{symbol}/refresh")
+@app.post("/admin/indices/{provider}/{symbol}/refresh", dependencies=[Depends(require_admin)])
 def admin_refresh(provider: str, symbol: str) -> dict:
     from datetime import timedelta
     start = last_date(provider, symbol)
@@ -79,12 +80,12 @@ def admin_refresh(provider: str, symbol: str) -> dict:
         return {"provider": provider, "symbol": symbol, "rows": 0, "msg": "Already up to date"}
     return {"provider": provider, "symbol": symbol, "rows": n}
 
-@app.delete("/admin/indices/{provider}/{symbol}")
+@app.delete("/admin/indices/{provider}/{symbol}", dependencies=[Depends(require_admin)])
 def admin_delete(provider: str, symbol: str) -> dict:
     delete_index(provider, symbol)
     return {"ok": True}
 
-@app.patch("/admin/indices/{provider}/{symbol}/meta")
+@app.patch("/admin/indices/{provider}/{symbol}/meta", dependencies=[Depends(require_admin)])
 def admin_update_meta(
     provider: str, symbol: str,
     name: str | None = None,
@@ -94,7 +95,7 @@ def admin_update_meta(
     upsert_metadata(provider, symbol, **kwargs)
     return {"ok": True}
 
-@app.post("/admin/indices/{provider}/{symbol}/tag")
+@app.post("/admin/indices/{provider}/{symbol}/tag", dependencies=[Depends(require_admin)])
 def admin_tag_index(
     provider: str, symbol: str,
     backend: str = DEFAULT_TAGGER_BACKEND,
